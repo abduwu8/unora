@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HiAcademicCap, HiAdjustmentsHorizontal, HiCurrencyDollar, HiDocumentText, HiArrowsRightLeft, HiSparkles } from 'react-icons/hi2';
 import FeedbackForm from '../components/FeedbackForm';
 import FlyingPlane from '../components/FlyingPlane';
+import ReviewSection from '../components/ReviewSection';
 
 const Home = () => {
   // Animation variants
@@ -245,6 +246,9 @@ const Home = () => {
         </div>
       </motion.section>
       
+      {/* Reviews Section (Supabase-powered) */}
+      <ReviewSection />
+
       {/* Feedback Form Section */}
       <div className="relative z-10 pb-12">
         <FeedbackForm />
