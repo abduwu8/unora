@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { apiFetch } from '../apiClient';
 
 const initialForm = {
   country: '',
@@ -73,7 +74,7 @@ const Budget = () => {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/budget-info', {
+      const response = await apiFetch('/api/budget-info', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

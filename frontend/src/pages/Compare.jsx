@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiSparkles, HiAcademicCap } from 'react-icons/hi2';
+import { apiFetch } from '../apiClient';
 
 const Compare = () => {
   const [universities, setUniversities] = useState(['', '', '']);
@@ -36,7 +37,7 @@ const Compare = () => {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/compare-universities', {
+      const response = await apiFetch('/api/compare-universities', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

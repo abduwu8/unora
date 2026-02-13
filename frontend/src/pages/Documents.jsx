@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiDocumentText } from 'react-icons/hi2';
+import { apiFetch } from '../apiClient';
 
 const Documents = () => {
   const [country, setCountry] = useState('');
@@ -23,7 +24,7 @@ const Documents = () => {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/required-documents', {
+      const response = await apiFetch('/api/required-documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

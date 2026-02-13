@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiSparkles } from 'react-icons/hi2';
+import { apiFetch } from '../apiClient';
 
 const Universities = () => {
   const [customName, setCustomName] = useState('');
@@ -48,7 +49,7 @@ const Universities = () => {
     setAiResult(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/university-score', {
+      const response = await apiFetch('/api/university-score', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

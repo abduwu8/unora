@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { apiFetch } from '../apiClient';
 
 const initialForm = {
   cgpa: '',
@@ -48,7 +49,7 @@ const Match = () => {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/profile-match', {
+      const response = await apiFetch('/api/profile-match', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

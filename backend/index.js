@@ -2,17 +2,24 @@ import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const app = express();
 app.use(
   cors({
-    origin: 'http://localhost:5173', // Your Vite frontend URL
+    origin: process.env.CLIENT_ORIGIN || true,
     credentials: true,
   })
 );
 app.use(express.json());
+
+// Static assets (built Vite frontend)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '../frontend/dist');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -769,6 +776,12 @@ Make sure the comparison is fair, balanced, and based on the actual Reddit data 
 });
 
 const PORT = process.env.PORT || 4000;
+
+// Serve frontend build (after API routes so they keep working)
+app.use(express.static(distPath));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`Backend API listening on http://localhost:${PORT}`);
