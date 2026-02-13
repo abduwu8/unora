@@ -2,13 +2,22 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiAdjustmentsHorizontal } from 'react-icons/hi2';
+import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { downloadVerdictPdf } from '../utils/verdictPdf';
+
+const CURRENCIES = [
+  { id: 'INR', symbol: '₹', key: 'yearlyCostInr', keyAlt: 'yearlyCostInInr' },
+  { id: 'USD', symbol: '$', key: 'yearlyCostUsd' },
+  { id: 'EUR', symbol: '€', key: 'yearlyCostEur' },
+];
 
 const Overall = () => {
   const [form, setForm] = useState({ university: '', country: '' });
   const [result, setResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [currency, setCurrency] = useState('USD');
 
   const canSubmit = form.university.trim() && form.country.trim();
 
@@ -17,13 +26,16 @@ const Overall = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.university.trim() || !form.country.trim()) {
+  const handleSubmit = async (e, override) => {
+    e?.preventDefault?.();
+    const uni = (override?.university ?? form.university).trim();
+    const country = (override?.country ?? form.country).trim();
+    if (!uni || !country) {
       setError('Please enter both university and country.');
       return;
     }
 
+    setForm((prev) => (override ? { university: override.university, country: override.country } : prev));
     setIsLoading(true);
     setError('');
     setResult(null);
@@ -35,8 +47,8 @@ const Overall = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          university: form.university,
-          country: form.country,
+          university: uni,
+          country: country,
         }),
       });
 
@@ -51,6 +63,13 @@ const Overall = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSimilarUni = (name, country) => {
+    setForm({ university: name, country: country || form.country });
+    setResult(null);
+    setError('');
+    handleSubmit({ preventDefault: () => {} }, { university: name, country: country || form.country });
   };
 
   const containerVariants = {
@@ -108,11 +127,11 @@ const Overall = () => {
         </motion.div>
         <motion.header className="mb-8" variants={itemVariants}>
           <p className="text-xs uppercase tracking-[0.3em] text-gray-500 mb-3">
-            one-look verdict (india)
+            one-look verdict
           </p>
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold text-gray-900">
             Is this uni worth it
-            <span className="block text-amber-600">for an Indian applicant?</span>
+            <span className="block text-amber-600">for international applicants?</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm md:text-base text-gray-700">
             Type a university and country once. We&apos;ll crunch Reddit reviews and rough
@@ -189,13 +208,24 @@ const Overall = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="flex flex-col gap-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
-                  quick context
-                </p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {result.university || form.university} · {result.country || form.country}
-                </p>
+              <div className="flex flex-row items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
+                    quick context
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {result.university || form.university} · {result.country || form.country}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => downloadVerdictPdf(result, form.university, form.country)}
+                  title="Download PDF"
+                  className="shrink-0 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white p-2.5 md:px-4 md:py-2.5 md:gap-2 text-xs font-medium leading-none text-gray-700 shadow-sm hover:border-amber-300 hover:bg-amber-50 transition min-h-[2.5rem] w-10 h-10 md:w-auto md:h-auto md:min-h-[2.5rem]"
+                >
+                  <HiArrowDownTray className="h-5 w-5 md:h-4 md:w-4 shrink-0" aria-hidden />
+                  <span className="hidden md:inline">Download PDF</span>
+                </button>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3 text-sm text-gray-900">
@@ -211,13 +241,49 @@ const Overall = () => {
                   </p>
                   <p>{result.reviewMood}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-2 col-span-3 md:col-span-1">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                    rough yearly cost (₹)
+                    rough yearly cost
                   </p>
-                  <p>{result.yearlyCostInr || result.yearlyCostInInr || '—'}</p>
+                  <div className="inline-flex rounded-full border border-gray-200 bg-white p-0.5">
+                    {CURRENCIES.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCurrency(c.id)}
+                        className={`px-2.5 py-1 text-[11px] rounded-full transition ${
+                          currency === c.id
+                            ? 'bg-gray-900 text-white'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {c.id}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-900">
+                    {(() => {
+                      const curr = CURRENCIES.find((x) => x.id === currency);
+                      const value = curr ? (result[curr.key] || (curr.keyAlt && result[curr.keyAlt]) || '—') : '—';
+                      return <><span className="text-gray-500">{curr?.symbol}</span> {value}</>;
+                    })()}
+                  </p>
                 </div>
               </div>
+
+              {(result.acceptanceRate != null && result.acceptanceRate !== '') && (
+              <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-4 py-3 text-sm">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500 mb-1">
+                  acceptance rate
+                </p>
+                <p className="text-gray-900 mb-2">
+                  {result.acceptanceRate}
+                </p>
+                <p className="text-xs text-gray-500 italic">
+                  Based on publicly available data (e.g. GradCafe, Admit.com, Reddit). Actual rates depend on the university and program.
+                </p>
+              </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] text-xs md:text-sm">
                 <div>
@@ -241,6 +307,29 @@ const Overall = () => {
                   </div>
                 )}
               </div>
+
+              {Array.isArray(result.similarUniversities) && result.similarUniversities.length > 0 && (
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500 mb-2">
+                    similar universities
+                  </p>
+                  <p className="text-xs text-gray-600 mb-2">
+                    Based on prestige, focus, and location. Click to get a verdict.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.similarUniversities.map((sim, idx) => (
+                      <button
+                        key={`${sim.name}-${idx}`}
+                        type="button"
+                        onClick={() => handleSimilarUni(sim.name, sim.country)}
+                        className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1.5 text-xs md:text-sm text-gray-800 hover:border-amber-300 hover:bg-amber-50 transition"
+                      >
+                        {sim.name}{sim.country ? `, ${sim.country}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {Array.isArray(result.sources) && result.sources.length > 0 && (
                 <div className="pt-3 border-t border-gray-100">

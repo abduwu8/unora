@@ -63,8 +63,11 @@ async function fetchRedditThread(permalink) {
 }
 
 // Search Reddit and then fetch full threads (post + top comments)
-async function fetchRedditPosts(universityName) {
-  const q = encodeURIComponent(`${universityName} university student reviews`);
+async function fetchRedditPosts(universityName, country) {
+  const searchQuery = country && country.trim()
+    ? `${universityName} ${country.trim()} university student reviews`
+    : `${universityName} university student reviews`;
+  const q = encodeURIComponent(searchQuery);
   const url = `https://www.reddit.com/search.json?q=${q}&limit=10&sort=relevance`;
 
   const res = await fetch(url, {
@@ -81,10 +84,10 @@ async function fetchRedditPosts(universityName) {
 
   const allPosts = (json.data?.children || []).map((c) => c.data);
 
-  // Only keep posts from roughly the last year
+  // Only keep posts from roughly the last 3 years
   const nowSeconds = Date.now() / 1000;
-  const oneYearSeconds = 365 * 24 * 60 * 60;
-  const cutoff = nowSeconds - oneYearSeconds;
+  const threeYearsSeconds = 3 * 365 * 24 * 60 * 60;
+  const cutoff = nowSeconds - threeYearsSeconds;
 
   const recentPosts = allPosts.filter(
     (p) => typeof p.created_utc === 'number' && p.created_utc >= cutoff
@@ -120,10 +123,10 @@ async function fetchRedditLivingCosts(location) {
 
   const allPosts = (json.data?.children || []).map((c) => c.data);
 
-  // Only keep posts from roughly the last year
+  // Only keep posts from roughly the last 3 years
   const nowSeconds = Date.now() / 1000;
-  const oneYearSeconds = 365 * 24 * 60 * 60;
-  const cutoff = nowSeconds - oneYearSeconds;
+  const threeYearsSeconds = 3 * 365 * 24 * 60 * 60;
+  const cutoff = nowSeconds - threeYearsSeconds;
 
   const recentPosts = allPosts.filter(
     (p) => typeof p.created_utc === 'number' && p.created_utc >= cutoff
@@ -144,7 +147,8 @@ async function fetchQuoraSnippets(universityName) {
 }
 
 app.post('/api/university-score', async (req, res) => {
-  const { name } = req.body || {};
+  const { name, country } = req.body || {};
+  const countryTrimmed = country && typeof country === 'string' ? country.trim() : '';
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Missing university name' });
@@ -152,7 +156,7 @@ app.post('/api/university-score', async (req, res) => {
 
   try {
     const [redditPosts, quoraSnippets] = await Promise.all([
-      fetchRedditPosts(name),
+      fetchRedditPosts(name, countryTrimmed || undefined),
       fetchQuoraSnippets(name),
     ]);
 
@@ -174,9 +178,9 @@ app.post('/api/university-score', async (req, res) => {
           {
             role: 'user',
             content: `
-University: "${name}"
+University: "${name}"${countryTrimmed ? `\nCountry/location: "${countryTrimmed}"` : ''}
 
-Here are real Reddit threads (each includes the original post plus the top-level comments text). Use ONLY these for your judgement.
+Here are real Reddit threads (each includes the original post plus the top-level comments text). Use ONLY these for your judgement.${countryTrimmed ? ' The country/location helps disambiguate and focus the summary.' : ''}
 
 Reddit threads (title, post body, top comments text, score, comments count, subreddit, created_utc):
 ${JSON.stringify(redditPosts, null, 2)}
@@ -200,6 +204,7 @@ Respond ONLY as JSON:
   "cons": string[],
   "evidenceStrength": string
 }
+Include the country in "name" only if it was provided and helps (e.g. "University of Glasgow, Scotland").
             `,
           },
         ],
@@ -236,6 +241,7 @@ Respond ONLY as JSON:
 
     return res.json({
       ...parsed,
+      country: countryTrimmed || undefined,
       threads: threadsForClient,
     });
   } catch (err) {
@@ -496,7 +502,7 @@ Respond ONLY as strict JSON with this shape:
   }
 });
 
-// Overall one-look insight for Indian applicants (reviews + rough costs + worth-it verdict)
+// Overall one-look insight for international applicants (reviews + rough costs + worth-it verdict)
 app.post('/api/overall-insight', async (req, res) => {
   const { university, country } = req.body || {};
 
@@ -538,7 +544,7 @@ app.post('/api/overall-insight', async (req, res) => {
           {
             role: 'system',
             content:
-              'You are advising Indian students on studying abroad. Given Reddit-style threads about a university and about student living costs in a country, you must give a super short, on-point summary – no long paragraphs, just crisp phrases. Focus on what an Indian applicant cares about: fees + living cost ballpark (in INR), placements / ROI, and whether the vibe from students is positive or mixed.',
+              'You are advising international students on studying abroad. Given Reddit-style threads about a university and about student living costs in a country, give a super short, on-point summary – no long paragraphs, just crisp phrases. Focus on what applicants care about: fees + living cost ballpark in INR, USD, and EUR; placements / ROI; acceptance rate (infer from all available data: Reddit, and general knowledge from sources like GradCafe, Admit.com, etc.); and whether the vibe from students is positive or mixed. Always provide rough yearly cost estimates in all three currencies (convert from local currency if needed). For acceptance rate, synthesize what is commonly reported or discussed online and note that it varies by program and is not official unless stated.',
           },
           {
             role: 'user',
@@ -552,18 +558,24 @@ ${JSON.stringify(uniThreads, null, 2)}
 Reddit threads about student living costs for the country:
 ${JSON.stringify(livingCostThreads, null, 2)}
 
-For an Indian applicant, give a VERY SHORT JSON-only answer in this exact shape. Use compact, WhatsApp-style phrases, not essays:
+For an international applicant, give a VERY SHORT JSON-only answer in this exact shape. Use compact, WhatsApp-style phrases, not essays:
 {
   "university": string,            // cleaned display name
   "country": string,
   "isWorthItVerdict": string,      // 1 short line, e.g. "Worth it if you get some scholarship" or "Only worth it for top CS/engg profiles"
   "reviewMood": string,            // 1 short line about Reddit sentiment: "Mostly positive", "Mixed", "Many complaints about admin", etc.
-  "yearlyCostInInr": string,       // 1 line rough all-in yearly budget in INR, e.g. "₹18–22L per year (tuition + living)"
+  "yearlyCostInr": string,         // rough all-in yearly budget in INR, e.g. "₹18–22L (tuition + living)"
+  "yearlyCostUsd": string,        // rough all-in yearly budget in USD, e.g. "$25–30k (tuition + living)"
+  "yearlyCostEur": string,         // rough all-in yearly budget in EUR, e.g. "€22–28k (tuition + living)"
+  "acceptanceRate": string,        // 1–2 lines: best estimate from Reddit + common sources (GradCafe, Admit.com, etc.), e.g. "~15–25% for CS; often cited online, varies by program"
   "difficultyLevel": string,       // 1 line: "Safe option", "Competitive", or "Very competitive" with 3–4 words of context
-  "quickNotes": string[]           // 3–4 bullet-style very short notes, max 10–12 words each
+  "quickNotes": string[],          // 3–4 bullet-style very short notes, max 10–12 words each
+  "similarUniversities": [         // 3–5 unis similar in prestige, focus, or location (same or comparable country). Use full names.
+    { "name": string, "country": string }
+  ]
 }
 
-Be honest if data is weak, but still give a rough idea.
+Suggest similar universities based on the data and your knowledge (same country or region, similar reputation/programs). Be honest if data is weak, but still give a rough idea.
 Respond ONLY with JSON, no extra text.
           `,
           },
@@ -587,6 +599,16 @@ Respond ONLY with JSON, no extra text.
     } catch (err) {
       console.error('overall-insight parse error:', err, 'content:', content);
       return res.status(500).json({ error: 'Could not parse overall insight response' });
+    }
+
+    // Normalize similar universities: ensure array of { name, country }
+    const rawSimilar = parsed.similarUniversities;
+    if (Array.isArray(rawSimilar)) {
+      parsed.similarUniversities = rawSimilar
+        .filter((s) => s && typeof s.name === 'string' && s.name.trim())
+        .map((s) => ({ name: s.name.trim(), country: (s.country && String(s.country).trim()) || countryName }));
+    } else {
+      parsed.similarUniversities = [];
     }
 
     // Also expose a couple of links so the UI can point users to raw sources

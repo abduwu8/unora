@@ -6,6 +6,7 @@ import { apiFetch } from '../apiClient';
 
 const Universities = () => {
   const [customName, setCustomName] = useState('');
+  const [country, setCountry] = useState('');
   const [aiResult, setAiResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -54,7 +55,10 @@ const Universities = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: customName }),
+        body: JSON.stringify({
+        name: customName.trim(),
+        ...(country.trim() && { country: country.trim() }),
+      }),
       });
 
       if (!response.ok) {
@@ -66,12 +70,14 @@ const Universities = () => {
 
       // Update local history with this university
       const displayName = data?.name || customName.trim();
+      const displayCountry = data?.country || country.trim() || null;
       if (displayName) {
+        const key = (n, c) => `${n.toLowerCase()}-${(c || '').toLowerCase()}`;
         const existingWithoutCurrent = history.filter(
-          (item) => item.name.toLowerCase() !== displayName.toLowerCase()
+          (item) => key(item.name, item.country) !== key(displayName, displayCountry)
         );
         const next = [
-          { name: displayName, viewedAt: Date.now() },
+          { name: displayName, country: displayCountry || undefined, viewedAt: Date.now() },
           ...existingWithoutCurrent,
         ].slice(0, 8); // keep last 8
         persistHistory(next);
@@ -145,38 +151,57 @@ const Universities = () => {
             <span className="block text-amber-600">summarised for you.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm md:text-base text-gray-700">
-            Type any university name below and we&apos;ll scan real Reddit-style
+            Type a university name and country below and we&apos;ll scan real Reddit-style
             threads, then summarise what students are actually saying into a
             simple score with pros and cons.
           </p>
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs md:text-sm text-amber-900/90">
+            <strong>Notice:</strong> Our AI is still being trained and may not always be accurate. Sometimes it can return empty or missing data. Information can be incomplete or out of date. Please double-check with official university sources.
+          </div>
         </motion.header>
 
         {/* Custom university evaluation with Groq */}
         <motion.section className="space-y-6" variants={itemVariants}>
           <form
             onSubmit={handleEvaluate}
-            className="flex flex-col gap-3 md:flex-row md:items-end"
+            className="flex flex-col gap-3"
           >
-            <div className="flex-1">
-              <label className="block text-[11px] font-medium text-gray-700 mb-1.5 uppercase tracking-[0.18em]">
-                add your own university
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. University of Glasgow"
-                className="w-full rounded-full border border-gray-200 bg-white py-3 px-4 text-sm md:text-base outline-none shadow-sm focus:border-gray-700 focus:ring-2 focus:ring-gray-200 transition"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-              />
+            <div className="grid gap-3 md:grid-cols-2 md:items-end">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-700 mb-1.5 uppercase tracking-[0.18em]">
+                  university name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. University of Glasgow"
+                  className="w-full rounded-full border border-gray-200 bg-white py-3 px-4 text-sm md:text-base outline-none shadow-sm focus:border-gray-700 focus:ring-2 focus:ring-gray-200 transition"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-700 mb-1.5 uppercase tracking-[0.18em]">
+                  country
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Scotland, UK, Germany"
+                  className="w-full rounded-full border border-gray-200 bg-white py-3 px-4 text-sm md:text-base outline-none shadow-sm focus:border-gray-700 focus:ring-2 focus:ring-gray-200 transition"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                />
+              </div>
             </div>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white px-4 md:px-5 py-2.5 md:py-3 mt-1 md:mt-0 shadow-md hover:bg-gray-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={isLoading || !canSubmit}
-              aria-label={isLoading ? 'Analysing reviews' : 'Rate with AI'}
-            >
-              <HiSparkles className="h-5 w-5" />
-            </button>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white px-4 md:px-5 py-2.5 md:py-3 shadow-md hover:bg-gray-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={isLoading || !canSubmit}
+                aria-label={isLoading ? 'Analysing reviews' : 'Rate with AI'}
+              >
+                <HiSparkles className="h-5 w-5" />
+              </button>
+            </div>
           </form>
 
           {isLoading && (
@@ -212,6 +237,9 @@ const Universities = () => {
                 <div className="text-sm md:text-base text-gray-800 space-y-3 md:space-y-4">
                   <p className="font-semibold text-lg text-gray-900">
                     {aiResult.name || customName}
+                    {aiResult.country && (
+                      <span className="font-normal text-gray-600"> · {aiResult.country}</span>
+                    )}
                   </p>
                   <p>
                     {aiResult.summary}
@@ -290,21 +318,22 @@ const Universities = () => {
             </p>
             <div className="flex flex-wrap gap-2">
               {history.map((item) => {
+                const label = item.country ? `${item.name} · ${item.country}` : item.name;
                 const officialSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(
                   `${item.name} official university website`
                 )}`;
                 return (
                   <a
-                    key={item.viewedAt + item.name}
+                    key={item.viewedAt + (item.country || '') + item.name}
                     href={officialSearchUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1.5 text-xs md:text-sm text-gray-800 hover:border-gray-400 hover:bg-gray-50 transition"
                   >
                     <span className="truncate max-w-[10rem] md:max-w-[14rem]">
-                      {item.name}
+                      {label}
                     </span>
-                    <span className="ml-2 text-[11px] text-gray-500">
+                    <span className="ml-2 text-[11px] text-gray-500 shrink-0">
                       official site
                     </span>
                   </a>
