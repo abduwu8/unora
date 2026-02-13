@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { HiAcademicCap, HiAdjustmentsHorizontal, HiCurrencyDollar, HiDocumentText, HiArrowsRightLeft } from 'react-icons/hi2';
+import { HiAcademicCap, HiAdjustmentsHorizontal, HiCurrencyDollar, HiDocumentText, HiArrowsRightLeft, HiSparkles } from 'react-icons/hi2';
 import FeedbackForm from '../components/FeedbackForm';
 import FlyingPlane from '../components/FlyingPlane';
 
@@ -235,6 +235,14 @@ const Home = () => {
             chapter deserves a little less chaos and a lot more clarity.
           </p>
         </div>
+        <div className="mt-6 flex justify-center">
+          <Link
+            to="/overall"
+            className="inline-flex items-center justify-center rounded-full border border-gray-900/60 bg-gray-900 text-white text-xs md:text-sm font-semibold px-6 py-2.5 shadow-sm hover:bg-white hover:text-gray-900 hover:border-gray-900 transition"
+          >
+            Straightforward verdict
+          </Link>
+        </div>
       </motion.section>
       
       {/* Feedback Form Section */}
@@ -243,12 +251,17 @@ const Home = () => {
       </div>
 
       {/* End of page linked text (regular footer, sits at bottom of viewport/content) */}
-      <div className="relative z-10 mt-auto pb-0 pt-2 text-center">
+      <div className="relative z-10 mt-auto pb-4 pt-4 flex justify-center">
         <a
           href="https://www.linkedin.com/in/abdullahkhannn"
-          className="text-sm font-bold text-gray-800 hover:text-gray-900"
+          className="inline-flex items-center justify-center"
+          aria-label="LinkedIn profile"
         >
-          linkedin
+          <img
+            src="/linkedin.png"
+            alt="LinkedIn"
+            className="h-5 w-5 md:h-6 md:w-6"
+          />
         </a>
       </div>
     </motion.div>

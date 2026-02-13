@@ -496,6 +496,125 @@ Respond ONLY as strict JSON with this shape:
   }
 });
 
+// Overall one-look insight for Indian applicants (reviews + rough costs + worth-it verdict)
+app.post('/api/overall-insight', async (req, res) => {
+  const { university, country } = req.body || {};
+
+  if (!university || !university.trim() || !country || !country.trim()) {
+    return res.status(400).json({ error: 'University and country are required' });
+  }
+
+  const uniName = university.trim();
+  const countryName = country.trim();
+
+  try {
+    // Fetch Reddit data for the university and living costs for the country
+    let uniThreads = [];
+    let livingCostThreads = [];
+
+    try {
+      uniThreads = await fetchRedditPosts(uniName);
+    } catch (err) {
+      console.error('overall-insight reddit university error:', err);
+      uniThreads = [];
+    }
+
+    try {
+      livingCostThreads = await fetchRedditLivingCosts(countryName);
+    } catch (err) {
+      console.error('overall-insight reddit living-cost error:', err);
+      livingCostThreads = [];
+    }
+
+    const groqRes = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are advising Indian students on studying abroad. Given Reddit-style threads about a university and about student living costs in a country, you must give a super short, on-point summary – no long paragraphs, just crisp phrases. Focus on what an Indian applicant cares about: fees + living cost ballpark (in INR), placements / ROI, and whether the vibe from students is positive or mixed.',
+          },
+          {
+            role: 'user',
+            content: `
+University: ${uniName}
+Country: ${countryName}
+
+Reddit threads about the university (post + comments):
+${JSON.stringify(uniThreads, null, 2)}
+
+Reddit threads about student living costs for the country:
+${JSON.stringify(livingCostThreads, null, 2)}
+
+For an Indian applicant, give a VERY SHORT JSON-only answer in this exact shape. Use compact, WhatsApp-style phrases, not essays:
+{
+  "university": string,            // cleaned display name
+  "country": string,
+  "isWorthItVerdict": string,      // 1 short line, e.g. "Worth it if you get some scholarship" or "Only worth it for top CS/engg profiles"
+  "reviewMood": string,            // 1 short line about Reddit sentiment: "Mostly positive", "Mixed", "Many complaints about admin", etc.
+  "yearlyCostInInr": string,       // 1 line rough all-in yearly budget in INR, e.g. "₹18–22L per year (tuition + living)"
+  "difficultyLevel": string,       // 1 line: "Safe option", "Competitive", or "Very competitive" with 3–4 words of context
+  "quickNotes": string[]           // 3–4 bullet-style very short notes, max 10–12 words each
+}
+
+Be honest if data is weak, but still give a rough idea.
+Respond ONLY with JSON, no extra text.
+          `,
+          },
+        ],
+        temperature: 0.4,
+      }),
+    });
+
+    if (!groqRes.ok) {
+      console.error('Groq overall-insight error:', groqRes.status, await groqRes.text());
+      return res.status(500).json({ error: 'Failed to generate overall insight' });
+    }
+
+    const data = await groqRes.json();
+    const content = data.choices?.[0]?.message?.content || '{}';
+
+    let parsed;
+    try {
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsed = JSON.parse(cleanedContent);
+    } catch (err) {
+      console.error('overall-insight parse error:', err, 'content:', content);
+      return res.status(500).json({ error: 'Could not parse overall insight response' });
+    }
+
+    // Also expose a couple of links so the UI can point users to raw sources
+    const sources = [
+      {
+        type: 'reddit',
+        label: `Reddit reviews about ${uniName}`,
+        url: `https://www.reddit.com/search/?q=${encodeURIComponent(`${uniName} university student`)}`,
+      },
+      {
+        type: 'living_costs',
+        label: `Reddit threads on student living costs in ${countryName}`,
+        url: `https://www.reddit.com/search/?q=${encodeURIComponent(
+          `${countryName} student living costs`
+        )}`,
+      },
+    ];
+
+    return res.json({
+      ...parsed,
+      sources,
+    });
+  } catch (err) {
+    console.error('Backend overall-insight error:', err);
+    return res.status(500).json({ error: 'Failed to generate overall insight' });
+  }
+});
+
 // Required documents for student visa by country
 app.post('/api/required-documents', async (req, res) => {
   const { country } = req.body || {};

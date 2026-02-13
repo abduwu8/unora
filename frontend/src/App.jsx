@@ -6,11 +6,13 @@ import Match from './pages/Match';
 import Budget from './pages/Budget';
 import Documents from './pages/Documents';
 import Compare from './pages/Compare';
+import Overall from './pages/Overall';
 
 const App = () => {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/overall" element={<Overall />} />
       <Route path="/universities" element={<Universities />} />
       <Route path="/match" element={<Match />} />
       <Route path="/budget" element={<Budget />} />
