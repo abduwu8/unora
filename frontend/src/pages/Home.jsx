@@ -246,7 +246,7 @@ const Home = () => {
       <div className="relative z-10 mt-auto pb-0 pt-2 text-center">
         <a
           href="https://www.linkedin.com/in/abdullahkhannn"
-          className="text-sm font-bold underline text-gray-800 hover:text-gray-900"
+          className="text-sm font-bold text-gray-800 hover:text-gray-900"
         >
           linkedin
         </a>
