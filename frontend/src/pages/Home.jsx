@@ -5,6 +5,7 @@ import { HiAcademicCap, HiAdjustmentsHorizontal, HiCurrencyDollar, HiDocumentTex
 import FeedbackForm from '../components/FeedbackForm';
 import FlyingPlane from '../components/FlyingPlane';
 import ReviewSection from '../components/ReviewSection';
+import SiteVisitCount from '../components/SiteVisitCount';
 
 const Home = () => {
   // Animation variants
@@ -253,6 +254,9 @@ const Home = () => {
       <div className="relative z-10 pb-12">
         <FeedbackForm />
       </div>
+
+      {/* Site visit count (Supabase realtime, token-based like ratings) */}
+      <SiteVisitCount />
 
       {/* End of page linked text (regular footer, sits at bottom of viewport/content) */}
       <div className="relative z-10 mt-auto pb-4 pt-4 flex justify-center">
