@@ -245,6 +245,19 @@ const Home = () => {
             Straightforward verdict
           </Link>
         </div>
+
+        {/* Heads up: coverage & free-tier limits */}
+        <motion.div
+          className="mt-12 pt-8 border-t border-gray-200/80"
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.4 }}
+        >
+          <p className="text-xs md:text-sm text-gray-600 leading-relaxed max-w-2xl mx-auto text-center">
+            For some universities we can’t gather enough info, so the AI may break or skip parts at certain points. As a free service, answers can sometimes be cracked or imperfect, we’re improving it over time. Still, it's better than manually searching everything.
+          </p>
+        </motion.div>
       </motion.section>
       
       {/* Reviews Section (Supabase-powered) */}
