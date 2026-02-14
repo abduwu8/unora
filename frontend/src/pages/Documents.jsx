@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HiDocumentText } from 'react-icons/hi2';
 import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import { downloadDocumentsPdf } from '../utils/documentsPdf';
 
 const Documents = () => {
@@ -43,7 +44,7 @@ const Documents = () => {
       const data = await response.json();
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Something went wrong while fetching required documents.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

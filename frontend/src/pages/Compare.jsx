@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiSparkles, HiAcademicCap } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const Compare = () => {
   const [universities, setUniversities] = useState(['', '', '']);
@@ -54,7 +55,7 @@ const Compare = () => {
       const data = await response.json();
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Something went wrong while comparing universities.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

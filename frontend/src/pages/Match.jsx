@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const initialForm = {
   cgpa: '',
@@ -72,7 +73,7 @@ const Match = () => {
       const data = await response.json();
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Something went wrong while matching universities.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

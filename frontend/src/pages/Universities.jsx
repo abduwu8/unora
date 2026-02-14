@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiSparkles } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const Universities = () => {
   const [customName, setCustomName] = useState('');
@@ -83,7 +84,7 @@ const Universities = () => {
         persistHistory(next);
       }
     } catch (err) {
-      setError(err.message || 'Something went wrong while evaluating this university.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

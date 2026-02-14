@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const initialForm = {
   country: '',
@@ -92,7 +93,7 @@ const Budget = () => {
       const data = await response.json();
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Something went wrong while fetching budget information.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

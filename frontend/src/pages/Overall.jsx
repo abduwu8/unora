@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HiAdjustmentsHorizontal } from 'react-icons/hi2';
 import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import { downloadVerdictPdf } from '../utils/verdictPdf';
 
 const CURRENCIES = [
@@ -53,13 +54,13 @@ const Overall = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Something broke on our side. Please try again later.');
+        throw new Error();
       }
 
       const data = await response.json();
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Something broke on our side. Please try again later.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

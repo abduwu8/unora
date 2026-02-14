@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import emailjs from '@emailjs/browser';
 import { HiPaperAirplane, HiCheckCircle } from 'react-icons/hi2';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const FeedbackForm = () => {
   const [formData, setFormData] = useState({
@@ -67,7 +68,7 @@ const FeedbackForm = () => {
       }, 5000);
     } catch (err) {
       console.error('EmailJS Error:', err);
-      setError('Failed to send message. Please try again or contact us directly.');
+      setError(getApiErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
