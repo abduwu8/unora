@@ -5,6 +5,7 @@ import { HiDocumentText } from 'react-icons/hi2';
 import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatCachedAt } from '../utils/formatCachedAt';
 import { downloadDocumentsPdf } from '../utils/documentsPdf';
 
 const Documents = () => {
@@ -181,6 +182,11 @@ const Documents = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
+              {formatCachedAt(result.cachedAt) && (
+                <p className="text-xs text-gray-500">
+                  {formatCachedAt(result.cachedAt)}
+                </p>
+              )}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
                 <div className="flex flex-row items-start justify-between gap-4 mb-4">
                   <h2 className="text-lg md:text-xl font-semibold text-gray-900">

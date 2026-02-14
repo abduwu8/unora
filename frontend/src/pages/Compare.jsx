@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HiSparkles, HiAcademicCap } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatCachedAt } from '../utils/formatCachedAt';
 
 const Compare = () => {
   const [universities, setUniversities] = useState(['', '', '']);
@@ -195,6 +196,11 @@ const Compare = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
+              {formatCachedAt(result.cachedAt) && (
+                <p className="text-xs text-gray-500">
+                  {formatCachedAt(result.cachedAt)}
+                </p>
+              )}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
                 <h2 className="text-lg md:text-xl font-semibold text-gray-900 mb-6">
                   Comparison Results

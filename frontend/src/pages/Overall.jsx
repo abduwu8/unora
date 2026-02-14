@@ -5,6 +5,7 @@ import { HiAdjustmentsHorizontal } from 'react-icons/hi2';
 import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatCachedAt } from '../utils/formatCachedAt';
 import { downloadVerdictPdf } from '../utils/verdictPdf';
 
 const CURRENCIES = [
@@ -209,6 +210,11 @@ const Overall = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
+              {formatCachedAt(result.cachedAt) && (
+                <p className="text-xs text-gray-500">
+                  {formatCachedAt(result.cachedAt)}
+                </p>
+              )}
               <div className="flex flex-row items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs uppercase tracking-[0.2em] text-gray-500">

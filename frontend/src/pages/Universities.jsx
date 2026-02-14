@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HiSparkles } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatCachedAt } from '../utils/formatCachedAt';
 
 const Universities = () => {
   const [customName, setCustomName] = useState('');
@@ -220,6 +221,11 @@ const Universities = () => {
 
           {aiResult && !error && (
             <div className="space-y-4 md:space-y-5">
+              {formatCachedAt(aiResult.cachedAt) && (
+                <p className="text-xs text-gray-500">
+                  {formatCachedAt(aiResult.cachedAt)}
+                </p>
+              )}
               <div>
                   <p className="text-xs uppercase tracking-[0.25em] text-gray-500 mb-1">
                     estimated rating

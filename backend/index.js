@@ -4,8 +4,17 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  initCache,
+  cacheGet,
+  cacheSet,
+  TTL,
+  normalizeKey,
+} from './cache.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(
@@ -17,11 +26,37 @@ app.use(
 app.use(express.json());
 
 // Static assets (built Vite frontend)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, '../frontend/dist');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+/**
+ * Call Groq API. On 429 (rate limit) or 5xx, retries once with GROQ_API_KEY_ALT if set.
+ */
+async function groqFetch(body) {
+  const primaryKey = process.env.GROQ_API_KEY;
+  const altKey = process.env.GROQ_API_KEY_ALT;
+  let res = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${primaryKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if ((res.status === 429 || res.status >= 500) && altKey) {
+    console.warn('Groq primary key returned', res.status, ', retrying with alternate key');
+    res = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${altKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  return res;
+}
 
 // Fetch a single Reddit thread (post + top comments) via JSON endpoint
 async function fetchRedditThread(permalink) {
@@ -191,29 +226,31 @@ app.post('/api/university-score', async (req, res) => {
     return res.status(400).json({ error: 'Missing university name' });
   }
 
+  const cacheKey = `university-score:${normalizeKey([name, countryTrimmed])}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json({ ...cached.data, cachedAt: cached.cachedAt });
+  }
+  res.setHeader('X-Cache', 'MISS');
+
   try {
     const [redditSnippets, quoraSnippets] = await Promise.all([
       fetchRedditPostsLight(name, countryTrimmed || undefined),
       fetchQuoraSnippets(name),
     ]);
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Score universities from Reddit/Quora snippets. Use nicknames (e.g. UofG, Oxbridge) as the university. Reply only with valid JSON. Keep output very short: 2 pros, 2 cons, 1–2 sentence summary, one short evidence line.',
-          },
-          {
-            role: 'user',
-            content: `
+    const groqBody = {
+      model: 'openai/gpt-oss-120b',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Score universities from Reddit/Quora snippets. Use nicknames (e.g. UofG, Oxbridge) as the university. Reply only with valid JSON. Keep output very short: 2 pros, 2 cons, 1–2 sentence summary, one short evidence line.',
+        },
+        {
+          role: 'user',
+          content: `
 Uni: "${name}"${countryTrimmed ? ` | Country: "${countryTrimmed}"` : ''}
 
 Reddit (title + snippet):
@@ -226,11 +263,11 @@ JSON only:
 {"name":"...","rating":1-10,"summary":"1-2 sentences","pros":["...","..."],"cons":["...","..."],"evidenceStrength":"one short phrase"}
 Name: include country only if given (e.g. "University of Glasgow, Scotland").
             `,
-          },
-        ],
-        temperature: 0.4,
-      }),
-    });
+        },
+      ],
+      temperature: 0.4,
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq error status:', groqRes.status, await groqRes.text());
@@ -249,10 +286,9 @@ Name: include country only if given (e.g. "University of Glasgow, Scotland").
       return res.status(500).json({ error: 'Could not parse Groq response' });
     }
 
-    return res.json({
-      ...parsed,
-      country: countryTrimmed || undefined,
-    });
+    const payload = { ...parsed, country: countryTrimmed || undefined };
+    await cacheSet(cacheKey, payload, TTL.UNIVERSITY_SCORE);
+    return res.json({ ...payload, cachedAt: Date.now() });
   } catch (err) {
     console.error('Backend error:', err);
     return res.status(500).json({ error: 'Failed to evaluate university' });
@@ -272,13 +308,7 @@ app.post('/api/profile-match', async (req, res) => {
   } = req.body || {};
 
   try {
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
+    const groqBody = {
         model: 'openai/gpt-oss-120b',
         messages: [
           {
@@ -321,8 +351,8 @@ Respond ONLY as strict JSON with this shape:
           },
         ],
         temperature: 0.4,
-      }),
-    });
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq profile-match error:', groqRes.status, await groqRes.text());
@@ -356,6 +386,13 @@ app.post('/api/budget-info', async (req, res) => {
   }
 
   const locationLabel = city ? `${city}, ${country}` : country;
+  const cacheKey = `budget:${normalizeKey([country, city || ''])}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json({ ...cached.data, cachedAt: cached.cachedAt });
+  }
+  res.setHeader('X-Cache', 'MISS');
 
   try {
     let livingCostThreads = [];
@@ -399,13 +436,7 @@ app.post('/api/budget-info', async (req, res) => {
       },
     ];
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
+    const groqBody = {
         model: 'openai/gpt-oss-120b',
         messages: [
           {
@@ -482,8 +513,8 @@ Respond ONLY as strict JSON with this shape:
           },
         ],
         temperature: 0.4,
-      }),
-    });
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq budget-info error:', groqRes.status, await groqRes.text());
@@ -501,10 +532,9 @@ Respond ONLY as strict JSON with this shape:
       return res.status(500).json({ error: 'Could not parse budget-info response' });
     }
 
-    return res.json({
-      ...parsed,
-      sources,
-    });
+    const payload = { ...parsed, sources };
+    await cacheSet(cacheKey, payload, TTL.BUDGET);
+    return res.json({ ...payload, cachedAt: Date.now() });
   } catch (err) {
     console.error('Backend budget-info error:', err);
     return res.status(500).json({ error: 'Failed to generate budget information' });
@@ -521,6 +551,13 @@ app.post('/api/overall-insight', async (req, res) => {
 
   const uniName = university.trim();
   const countryName = country.trim();
+  const cacheKey = `overall:${normalizeKey([uniName, countryName])}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json({ ...cached.data, cachedAt: cached.cachedAt });
+  }
+  res.setHeader('X-Cache', 'MISS');
 
   try {
     // Fetch Reddit data for the university and living costs for the country
@@ -541,13 +578,7 @@ app.post('/api/overall-insight', async (req, res) => {
       livingCostThreads = [];
     }
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
+    const groqBody = {
         model: 'openai/gpt-oss-120b',
         messages: [
           {
@@ -590,8 +621,8 @@ Respond ONLY with JSON, no extra text.
           },
         ],
         temperature: 0.4,
-      }),
-    });
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq overall-insight error:', groqRes.status, await groqRes.text());
@@ -636,10 +667,9 @@ Respond ONLY with JSON, no extra text.
       },
     ];
 
-    return res.json({
-      ...parsed,
-      sources,
-    });
+    const payload = { ...parsed, sources };
+    await cacheSet(cacheKey, payload, TTL.OVERALL);
+    return res.json({ ...payload, cachedAt: Date.now() });
   } catch (err) {
     console.error('Backend overall-insight error:', err);
     return res.status(500).json({ error: 'Failed to generate overall insight' });
@@ -653,6 +683,15 @@ app.post('/api/required-documents', async (req, res) => {
   if (!country || !country.trim()) {
     return res.status(400).json({ error: 'Country is required' });
   }
+
+  const countryTrimmed = country.trim();
+  const cacheKey = `documents:${normalizeKey([countryTrimmed])}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json({ ...cached.data, cachedAt: cached.cachedAt });
+  }
+  res.setHeader('X-Cache', 'MISS');
 
   try {
     const sources = [
@@ -672,13 +711,7 @@ app.post('/api/required-documents', async (req, res) => {
       },
     ];
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
+    const groqBody = {
         model: 'openai/gpt-oss-120b',
         messages: [
           {
@@ -729,8 +762,8 @@ Be thorough and include all standard requirements plus any country-specific docu
           },
         ],
         temperature: 0.3,
-      }),
-    });
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq required-documents error:', groqRes.status, await groqRes.text());
@@ -750,10 +783,9 @@ Be thorough and include all standard requirements plus any country-specific docu
       return res.status(500).json({ error: 'Could not parse document requirements response' });
     }
 
-    return res.json({
-      ...parsed,
-      sources,
-    });
+    const payload = { ...parsed, sources };
+    await cacheSet(cacheKey, payload, TTL.DOCUMENTS);
+    return res.json({ ...payload, cachedAt: Date.now() });
   } catch (err) {
     console.error('Backend required-documents error:', err);
     return res.status(500).json({ error: 'Failed to generate document requirements' });
@@ -777,6 +809,15 @@ app.post('/api/compare-universities', async (req, res) => {
   if (validUniversities.length < 2) {
     return res.status(400).json({ error: 'At least 2 valid university names are required' });
   }
+
+  const sortedNames = validUniversities.map((u) => u.trim().toLowerCase().replace(/\s+/g, ' ')).sort();
+  const cacheKey = `compare:${sortedNames.join(':')}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json({ ...cached.data, cachedAt: cached.cachedAt });
+  }
+  res.setHeader('X-Cache', 'MISS');
 
   try {
     // Light Reddit snippets per university (saves tokens)
@@ -812,13 +853,7 @@ app.post('/api/compare-universities', async (req, res) => {
       });
     });
 
-    const groqRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
+    const groqBody = {
         model: 'openai/gpt-oss-120b',
         messages: [
           {
@@ -858,8 +893,8 @@ JSON only:
           },
         ],
         temperature: 0.4,
-      }),
-    });
+    };
+    const groqRes = await groqFetch(groqBody);
 
     if (!groqRes.ok) {
       console.error('Groq compare-universities error:', groqRes.status, await groqRes.text());
@@ -878,10 +913,9 @@ JSON only:
       return res.status(500).json({ error: 'Could not parse comparison response' });
     }
 
-    return res.json({
-      ...parsed,
-      sources,
-    });
+    const payload = { ...parsed, sources };
+    await cacheSet(cacheKey, payload, TTL.COMPARE);
+    return res.json({ ...payload, cachedAt: Date.now() });
   } catch (err) {
     console.error('Backend compare-universities error:', err);
     return res.status(500).json({ error: 'Failed to generate comparison' });
@@ -896,7 +930,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend API listening on http://localhost:${PORT}`);
-});
+(async () => {
+  await initCache();
+  app.listen(PORT, () => {
+    console.log(`Backend API listening on http://localhost:${PORT}`);
+  });
+})();
 

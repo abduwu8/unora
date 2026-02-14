@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiFetch } from '../apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatCachedAt } from '../utils/formatCachedAt';
 
 const initialForm = {
   country: '',
@@ -253,6 +254,11 @@ const Budget = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
+              {formatCachedAt(result.cachedAt) && (
+                <p className="text-xs text-gray-500">
+                  {formatCachedAt(result.cachedAt)}
+                </p>
+              )}
               <motion.section
                 className="space-y-3"
                 initial={{ opacity: 0, y: 20 }}
