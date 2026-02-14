@@ -62,6 +62,43 @@ async function fetchRedditThread(permalink) {
   };
 }
 
+// Light Reddit search for university-score: listing only, no full thread fetch (saves tokens)
+async function fetchRedditPostsLight(universityName, country) {
+  const searchQuery = country && country.trim()
+    ? `${universityName} ${country.trim()} university student reviews`
+    : `${universityName} university student reviews`;
+  const q = encodeURIComponent(searchQuery);
+  const url = `https://www.reddit.com/search.json?q=${q}&limit=10&sort=relevance`;
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'UniHandle/1.0 (by u/your-username)',
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error('Reddit search failed');
+  }
+
+  const json = await res.json();
+  const allPosts = (json.data?.children || []).map((c) => c.data);
+
+  const nowSeconds = Date.now() / 1000;
+  const threeYearsSeconds = 3 * 365 * 24 * 60 * 60;
+  const cutoff = nowSeconds - threeYearsSeconds;
+
+  const recentPosts = allPosts.filter(
+    (p) => typeof p.created_utc === 'number' && p.created_utc >= cutoff
+  );
+
+  return recentPosts.slice(0, 3).map((p) => ({
+    title: p.title || '',
+    snippet: (p.selftext || '').slice(0, 220),
+    score: p.score,
+    subreddit: p.subreddit,
+  }));
+}
+
 // Search Reddit and then fetch full threads (post + top comments)
 async function fetchRedditPosts(universityName, country) {
   const searchQuery = country && country.trim()
@@ -155,8 +192,8 @@ app.post('/api/university-score', async (req, res) => {
   }
 
   try {
-    const [redditPosts, quoraSnippets] = await Promise.all([
-      fetchRedditPosts(name, countryTrimmed || undefined),
+    const [redditSnippets, quoraSnippets] = await Promise.all([
+      fetchRedditPostsLight(name, countryTrimmed || undefined),
       fetchQuoraSnippets(name),
     ]);
 
@@ -167,44 +204,27 @@ app.post('/api/university-score', async (req, res) => {
         Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        // Use Groq's OpenAI-compatible OSS model
         model: 'openai/gpt-oss-120b',
         messages: [
           {
             role: 'system',
             content:
-              'You are an assistant that scores universities based on the Reddit and Quora-style content provided in the context. Treat obvious nicknames or shorthand (e.g. "Glasgow uni", "UofG", "Oxbridge") as referring to the corresponding university, even if the exact full name is not written. Do not claim there is no data if posts clearly discuss the target university; only say data is weak when there are very few or obviously off-topic posts.',
+              'Score universities from Reddit/Quora snippets. Use nicknames (e.g. UofG, Oxbridge) as the university. Reply only with valid JSON. Keep output very short: 2 pros, 2 cons, 1–2 sentence summary, one short evidence line.',
           },
           {
             role: 'user',
             content: `
-University: "${name}"${countryTrimmed ? `\nCountry/location: "${countryTrimmed}"` : ''}
+Uni: "${name}"${countryTrimmed ? ` | Country: "${countryTrimmed}"` : ''}
 
-Here are real Reddit threads (each includes the original post plus the top-level comments text). Use ONLY these for your judgement.${countryTrimmed ? ' The country/location helps disambiguate and focus the summary.' : ''}
+Reddit (title + snippet):
+${JSON.stringify(redditSnippets)}
 
-Reddit threads (title, post body, top comments text, score, comments count, subreddit, created_utc):
-${JSON.stringify(redditPosts, null, 2)}
+Quora:
+${JSON.stringify(quoraSnippets.slice(0, 3))}
 
-Quora-like snippets (title, snippet, url):
-${JSON.stringify(quoraSnippets, null, 2)}
-
-From this data:
-1. Give an overall rating from 1–10
-2. 3–5 pros
-3. 3–5 cons
-4. 2–3 sentence summary
-5. Briefly state how strong the evidence is (few posts vs many, mixed vs consistent).
-
-Respond ONLY as JSON:
-{
-  "name": string,
-  "rating": number,
-  "summary": string,
-  "pros": string[],
-  "cons": string[],
-  "evidenceStrength": string
-}
-Include the country in "name" only if it was provided and helps (e.g. "University of Glasgow, Scotland").
+JSON only:
+{"name":"...","rating":1-10,"summary":"1-2 sentences","pros":["...","..."],"cons":["...","..."],"evidenceStrength":"one short phrase"}
+Name: include country only if given (e.g. "University of Glasgow, Scotland").
             `,
           },
         ],
@@ -222,27 +242,16 @@ Include the country in "name" only if it was provided and helps (e.g. "Universit
 
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsed = JSON.parse(cleaned);
     } catch (err) {
       console.error('Parse error:', err, 'content:', content);
       return res.status(500).json({ error: 'Could not parse Groq response' });
     }
 
-    // Attach the Reddit threads we actually used so the frontend
-    // can show direct links to the underlying discussions.
-    const threadsForClient = redditPosts.map((t) => ({
-      title: t.title,
-      url: t.url,
-      score: t.score,
-      num_comments: t.num_comments,
-      subreddit: t.subreddit,
-      created_utc: t.created_utc,
-    }));
-
     return res.json({
       ...parsed,
       country: countryTrimmed || undefined,
-      threads: threadsForClient,
     });
   } catch (err) {
     console.error('Backend error:', err);
@@ -770,9 +779,9 @@ app.post('/api/compare-universities', async (req, res) => {
   }
 
   try {
-    // Fetch Reddit data for each university
+    // Light Reddit snippets per university (saves tokens)
     const redditDataPromises = validUniversities.map((uni) =>
-      fetchRedditPosts(uni).catch((err) => {
+      fetchRedditPostsLight(uni).catch((err) => {
         console.error(`Reddit fetch error for ${uni}:`, err);
         return [];
       })
@@ -780,19 +789,13 @@ app.post('/api/compare-universities', async (req, res) => {
 
     const allRedditData = await Promise.all(redditDataPromises);
 
-    // Prepare context for AI
     const contextText = validUniversities
       .map((uni, idx) => {
-        const threads = allRedditData[idx] || [];
-        const threadsText = threads
-          .map(
-            (t) =>
-              `Title: ${t.title}\nPost: ${t.selftext}\nComments: ${t.commentsText}\nURL: ${t.url}`
-          )
-          .join('\n\n---\n\n');
-        return `University ${idx + 1}: ${uni}\nReddit Discussions:\n${threadsText || 'No Reddit data found'}`;
+        const snippets = allRedditData[idx] || [];
+        const text = snippets.map((s) => `"${s.title}" ${(s.snippet || '').slice(0, 180)}`).join(' | ');
+        return `${idx + 1}. ${uni}: ${text || 'No Reddit data'}`;
       })
-      .join('\n\n==========\n\n');
+      .join('\n\n');
 
     // Build sources array
     const sources = [];
@@ -821,52 +824,27 @@ app.post('/api/compare-universities', async (req, res) => {
           {
             role: 'system',
             content:
-              'You are an expert university comparison analyst. Compare universities based on real student discussions from Reddit and verified information. Provide accurate, balanced comparisons across key factors. Always base your analysis on the provided Reddit data and general knowledge.',
+              'Compare universities from Reddit snippets and knowledge. Reply only with valid JSON. Use exactly one short sentence per description. Keep summary and insights to one sentence each.',
           },
           {
             role: 'user',
-            content: `Compare these ${validUniversities.length} universities based on the Reddit discussions and your knowledge:
+            content: `Compare these ${validUniversities.length} universities (one sentence per answer):
 
 ${contextText}
 
-Compare them across these 4 main criteria:
-1. Academic Quality & Reputation - Teaching quality, faculty, research opportunities, academic rigor
-2. Student Life & Campus Experience - Campus facilities, social life, student support, location, atmosphere
-3. Career Outcomes & Job Prospects - Graduate employment rates, industry connections, alumni network, career support
-4. Value for Money - Tuition costs vs. quality, return on investment, scholarship availability, cost-effectiveness
+Criteria: 1) Academic Quality & Reputation 2) Student Life & Campus Experience 3) Career Outcomes & Job Prospects 4) Value for Money.
 
-For each university and each criterion, provide:
-- A rating out of 10
-- A brief description (2-3 sentences) explaining the rating based on the Reddit discussions and general knowledge
+For each university and each criterion: rating 1-10 and ONE short sentence. Then one-sentence overall summary and 2 short insight sentences.
 
-Also provide:
-- An overall summary comparing all universities
-- Key insights highlighting the main differences and which university might be best for different student profiles
-
-Respond ONLY as strict JSON with this structure:
+JSON only:
 {
   "comparison": [
-    {
-      "name": "University name",
-      "points": [
-        {
-          "rating": 8,
-          "description": "Description for Academic Quality"
-        },
-        {
-          "rating": 7,
-          "description": "Description for Student Life"
-        },
-        {
-          "rating": 9,
-          "description": "Description for Career Outcomes"
-        },
-        {
-          "rating": 8,
-          "description": "Description for Value for Money"
-        }
-      ]
-    }
+    { "name": "University name", "points": [
+      { "rating": 8, "description": "One sentence." },
+      { "rating": 7, "description": "One sentence." },
+      { "rating": 9, "description": "One sentence." },
+      { "rating": 8, "description": "One sentence." }
+    ]}
   ],
   "comparisonPoints": [
     { "name": "Academic Quality & Reputation" },
@@ -874,15 +852,9 @@ Respond ONLY as strict JSON with this structure:
     { "name": "Career Outcomes & Job Prospects" },
     { "name": "Value for Money" }
   ],
-  "summary": "Overall comparison summary (3-4 sentences)",
-  "insights": [
-    "Key insight 1",
-    "Key insight 2",
-    "Key insight 3"
-  ]
-}
-
-Make sure the comparison is fair, balanced, and based on the actual Reddit data provided. If data is limited for a university, note that in the description but still provide a reasonable assessment.`,
+  "summary": "One sentence overall.",
+  "insights": ["Short insight 1.", "Short insight 2."]
+}`,
           },
         ],
         temperature: 0.4,

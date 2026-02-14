@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HiDocumentText } from 'react-icons/hi2';
+import { HiArrowDownTray } from 'react-icons/hi2';
 import { apiFetch } from '../apiClient';
+import { downloadDocumentsPdf } from '../utils/documentsPdf';
 
 const Documents = () => {
   const [country, setCountry] = useState('');
@@ -179,9 +181,20 @@ const Documents = () => {
               transition={{ duration: 0.6 }}
             >
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
-                <h2 className="text-lg md:text-xl font-semibold text-gray-900 mb-4">
-                  Required Documents for {result.country || country}
-                </h2>
+                <div className="flex flex-row items-start justify-between gap-4 mb-4">
+                  <h2 className="text-lg md:text-xl font-semibold text-gray-900">
+                    Required Documents for {result.country || country}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => downloadDocumentsPdf(result, country)}
+                    title="Download PDF"
+                    className="shrink-0 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white p-2.5 md:px-4 md:py-2.5 md:gap-2 text-xs font-medium leading-none text-gray-700 shadow-sm hover:border-amber-300 hover:bg-amber-50 transition min-h-[2.5rem] w-10 h-10 md:w-auto md:h-auto md:min-h-[2.5rem]"
+                  >
+                    <HiArrowDownTray className="h-5 w-5 md:h-4 md:w-4 shrink-0" aria-hidden />
+                    <span className="hidden md:inline">Download PDF</span>
+                  </button>
+                </div>
                 
                 {result.summary && (
                   <p className="text-sm md:text-base text-gray-700 mb-6 leading-relaxed">

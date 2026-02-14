@@ -270,33 +270,6 @@ const Universities = () => {
                       </ul>
                     </div>
                   </div>
-
-                  {Array.isArray(aiResult.threads) && aiResult.threads.length > 0 && (
-                    <div className="pt-4 border-t border-gray-100 mt-4">
-                      <p className="font-semibold text-sm md:text-base text-gray-900 mb-2">
-                        Read the actual Reddit threads
-                      </p>
-                      <ul className="space-y-1.5 text-xs md:text-sm">
-                        {aiResult.threads.slice(0, 3).map((thread, idx) => (
-                          <li key={idx}>
-                            <a
-                              href={thread.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-amber-700 hover:text-amber-800 underline underline-offset-2"
-                            >
-                              {thread.title || 'Reddit discussion'}
-                            </a>
-                            {thread.subreddit && (
-                              <span className="ml-1 text-[11px] md:text-xs text-gray-500">
-                                ({thread.subreddit})
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
